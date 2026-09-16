@@ -63,10 +63,19 @@ conda run -n ice python make_iceutils_inversion_template.py \
 ./run_diagnostic.sh
 ```
 
+Use `ITSLIVE_DIAGNOSTIC_WORKERS` to choose the number of cubes processed in parallel:
+
+```bash
+ITSLIVE_DIAGNOSTIC_WORKERS=2 ./run_diagnostic.sh
+```
+
 The diagnostics use the cached per-observation validity and uncertainty arrays and
 write restartable results under
 `denman_s1_large_cached/inversion_diagnostics/`. The example uses explicit prior
-variances, so its scalar ridge strength is zero.
+variances, so its scalar ridge strength is zero. The launcher uses Conda's
+`--no-capture-output` mode so per-cube and per-block progress appears immediately.
+Each worker owns a separate cube cache and checkpoint directory; mosaicking remains a
+single parent-process step.
 
 ## 4. Plot an existing coverage result
 

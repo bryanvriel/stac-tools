@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -96,6 +97,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Pixels per batched linear-algebra operation (default: 256).",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Independent cube worker processes (default: 1).",
+    )
+    parser.add_argument(
         "--outdir",
         type=Path,
         help="Output directory (default: RESULTS_DIR/inversion_diagnostics).",
@@ -107,8 +114,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--error-floor must be finite and positive")
     if args.ridge < 0 or not math.isfinite(args.ridge):
         parser.error("--ridge must be finite and nonnegative")
-    if args.block_size < 1 or args.pixel_batch_size < 1:
-        parser.error("--block-size and --pixel-batch-size must be positive")
+    if args.block_size < 1 or args.pixel_batch_size < 1 or args.workers < 1:
+        parser.error("--block-size, --pixel-batch-size, and --workers must be positive")
     if args.resume and args.overwrite:
         parser.error("choose either --resume or --overwrite")
     args.outdir = args.outdir or args.results_dir / "inversion_diagnostics"
@@ -746,6 +753,26 @@ def process_tile(
     return result
 
 
+def process_tile_isolated(
+    tile: dict[str, Any],
+    source_arguments: dict[str, Any],
+    diagnostic_arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Process one cube in a fresh process with independently opened resources."""
+    deps = coverage.require_dependencies()
+    args = SimpleNamespace(**diagnostic_arguments)
+    args.results_dir = Path(args.results_dir)
+    args.template_h5 = Path(args.template_h5)
+    args.outdir = Path(args.outdir)
+    source_args = SimpleNamespace(**source_arguments)
+    source_args.outdir = Path(source_args.outdir)
+    roi = coverage.construct_roi(source_args, deps)
+    template = load_template(args.template_h5, deps)
+    operators = resolve_operators(template, args.observation_operator)
+    precision = prior_precision(template, args.ridge, deps["np"])
+    return process_tile(tile, roi, template, operators, precision, args, deps)
+
+
 def mosaic_metric(
     tile_results: list[dict[str, Any]],
     operator: str,
@@ -835,9 +862,43 @@ def run(args: argparse.Namespace) -> int:
             f"{args.outdir} is not empty; use --resume or --overwrite."
         )
     args.outdir.mkdir(parents=True, exist_ok=True)
-    results = []
-    for tile in tiles:
-        results.append(process_tile(tile, roi, template, operators, precision, args, deps))
+    if args.workers == 1 or len(tiles) <= 1:
+        results = [
+            process_tile(tile, roi, template, operators, precision, args, deps)
+            for tile in tiles
+        ]
+    else:
+        worker_count = min(args.workers, len(tiles))
+        print(f"Processing {len(tiles)} cubes with {worker_count} worker processes...")
+        source_arguments = coverage.json_value(config["arguments"])
+        diagnostic_arguments = coverage.json_value(vars(args))
+        results_by_cube: dict[str, dict[str, Any]] = {}
+        with ProcessPoolExecutor(max_workers=worker_count) as pool:
+            futures = {
+                pool.submit(
+                    process_tile_isolated,
+                    tile,
+                    source_arguments,
+                    diagnostic_arguments,
+                ): tile["cube"]["id"]
+                for tile in tiles
+            }
+            for future in as_completed(futures):
+                cube_id = futures[future]
+                try:
+                    results_by_cube[cube_id] = future.result()
+                except Exception as exc:
+                    for pending in futures:
+                        pending.cancel()
+                    raise RuntimeError(
+                        f"Diagnostic worker failed for cube {cube_id}: "
+                        f"{type(exc).__name__}: {exc}"
+                    ) from exc
+                print(
+                    f"[{cube_id}] cube diagnostics complete "
+                    f"({len(results_by_cube)}/{len(tiles)})"
+                )
+        results = [results_by_cube[tile["cube"]["id"]] for tile in tiles]
     reference = args.results_dir / "coverage_count.tif"
     for operator in operators:
         print(f"Mosaicking {operator} diagnostic maps...")
@@ -874,6 +935,7 @@ def run(args: argparse.Namespace) -> int:
         "error_variable": args.error_variable,
         "error_floor": args.error_floor,
         "ridge": args.ridge,
+        "workers": args.workers,
         "prior_variance": coverage.json_value(template.prior_variance.tolist()),
         "ridge_weights": coverage.json_value(template.ridge_weights.tolist()),
         "metrics": list(METRICS),

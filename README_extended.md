@@ -154,9 +154,10 @@ observation dates at every pixel. A velocity template runs both physically faith
 interval averaging and midpoint sampling by default:
 
 ```bash
-conda run -n stac python itslive_inversion_diagnostics.py \
+conda run --no-capture-output -n stac python -u itslive_inversion_diagnostics.py \
   denman_s1_large_cached denman_temporal_template.h5 \
-  --ridge 0 --error-variable auto --observation-cache require --resume
+  --ridge 0 --error-variable auto --observation-cache require \
+  --workers 4 --resume
 ```
 
 The HDF5 schema is:
@@ -198,7 +199,7 @@ conda run -n ice python make_iceutils_inversion_template.py \
   --poly-order 2 --isplines 16 8 4 \
   --ridge-groups transient
 
-conda run -n stac python itslive_inversion_diagnostics.py \
+conda run --no-capture-output -n stac python -u itslive_inversion_diagnostics.py \
   denman_s1_large_cached denman_temporal_template.h5 \
   --ridge 0.01 --error-variable auto --observation-cache require --resume
 ```
@@ -217,7 +218,10 @@ operators are requested, `comparison/` contains midpoint-to-interval uncertainty
 ratios. Block checkpoints allow interrupted remote reads to resume.
 Compatible coverage caches are used automatically. Set `--observation-cache require`
 to fail instead of falling back to remote reads, or `--observation-cache off` to ignore
-the cache explicitly.
+the cache explicitly. `--workers N` processes independent cubes in separate processes;
+the parent process mosaics their completed outputs. Start with 2–4 workers. If NumPy's
+BLAS is itself multithreaded, set `OMP_NUM_THREADS=1` and `OPENBLAS_NUM_THREADS=1` to
+avoid CPU oversubscription.
 
 ## Run the tests
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # The currently cataloged Denman cubes end in December 2021. Adjust these
 # dates when ITS_LIVE publishes newer cube assets.
-exec conda run -n stac python -u itslive_cube_coverage.py \
+exec conda run --no-capture-output -n stac python -u itslive_cube_coverage.py \
     --bbox-lonlat 97.8127 -68.2938 101.97906 -65.427 \
     --start 2019-01-01 \
     --end 2021-12-31 \
