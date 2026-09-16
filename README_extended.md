@@ -223,6 +223,57 @@ the parent process mosaics their completed outputs. Start with 2–4 workers. If
 BLAS is itself multithreaded, set `OMP_NUM_THREADS=1` and `OPENBLAS_NUM_THREADS=1` to
 avoid CPU oversubscription.
 
+### Diagnostic metrics
+
+Let `I = Gᵀ C_d⁻¹ G` be the data-information matrix, `P` the prior/ridge precision,
+and `C_post = (I + P)⁻¹` the posterior coefficient covariance. These metrics describe
+constraint geometry and assumed uncertainty; they do not measure model residuals or
+guarantee that the fitted time series is accurate.
+
+| Metric | Definition | Good and bad values |
+|---|---|---|
+| `usable_observation_count` | Number of selected observations with valid velocity and finite, positive uncertainty at the pixel. | Higher is generally better; zero means no data constraint. Count alone does not capture temporal distribution or measurement precision. |
+| `data_rank` | Numerical rank of the normalized data-only information matrix `I`; maximum is the number of model coefficients. | Full or high rank means more independent coefficient combinations are informed by data. Low rank means temporal redundancy or missing coefficient directions; priors may still make the posterior invertible. |
+| `effective_dof` | `trace(C_post I)`, the effective number of model degrees of freedom determined by the observations rather than regularization. | Higher, up to the coefficient count, means greater data control. Near zero means the solution is mostly prior/ridge controlled. Lower values are not necessarily undesirable when strong regularization is intentional. |
+| `log10_condition_number` | Base-10 logarithm of the condition number of the diagonally normalized posterior precision `I + P`. | Zero is ideal; lower is better. Large values indicate poorly separated coefficient combinations and numerical sensitivity. As rough guidance, `<2` is comfortable, `2–4` deserves attention, and `>6` is very poorly conditioned. `NaN` means the posterior precision was not numerically full rank. |
+| `information_gain_nats` | `0.5 [log det(I + P) − log det(P)]`, the Gaussian reduction in parameter-volume uncertainty relative to the prior. Computed only for a positive-definite prior. | Higher means the observations add more information beyond the prior; near zero means little improvement. Compare only runs using the same model and prior. `NaN` with an improper or absent prior is expected, not evidence of bad data. |
+| `mean_prediction_std` | Mean over the template time grid of `sqrt(b(t)ᵀ C_post b(t))`, where `b(t)` predicts velocity from the coefficients. | Lower is better and indicates good typical-time precision. High values indicate broadly weak constraints. Interpret in the prediction's velocity units and relative to the signal scale. |
+| `max_prediction_std` | Maximum of the same posterior prediction standard deviation over the template time grid. | Lower is better. High values expose the worst-constrained time, commonly near temporal edges or observation gaps; this is the conservative counterpart to the mean. |
+
+Interpret rank, effective DOF, and information gain relative to the number of template
+coefficients. Prediction uncertainties and information gain are directly comparable
+between pixels or operators only when the template, error model, and regularization are
+held fixed.
+
+### Plot inversion diagnostics
+
+Create a single overview with one row per available observation operator and one column
+per diagnostic metric. Color limits are shared between operator rows and default to the
+2nd–98th percentiles:
+
+```bash
+conda run -n stac python plot_itslive_inversion_diagnostics.py \
+  denman_s1_large_cached
+```
+
+Select a subset and override individual metric styling as needed:
+
+```bash
+conda run -n stac python plot_itslive_inversion_diagnostics.py \
+  denman_s1_large_cached \
+  --metrics \
+    data_rank \
+    effective_dof \
+    log10_condition_number \
+    max_prediction_std \
+  --cmap log10_condition_number turbo \
+  --clim max_prediction_std 0 50
+```
+
+The default output is
+`inversion_diagnostics/inversion_diagnostics_overview.png`. The positional argument may
+be either the coverage-results directory or its `inversion_diagnostics/` directory.
+
 ## Run the tests
 
 ```bash

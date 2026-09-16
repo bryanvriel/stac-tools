@@ -85,6 +85,13 @@ conda run -n stac python plot_itslive_coverage.py denman_s1_large_cached \
   --fraction-cmap magma --fraction-clim 0 1
 ```
 
+Plot all available inversion diagnostics in a shared-scale operator comparison:
+
+```bash
+conda run -n stac python plot_itslive_inversion_diagnostics.py \
+  denman_s1_large_cached
+```
+
 ## Run the tests
 
 ```bash
@@ -99,4 +106,5 @@ conda run -n stac python -m unittest -v \
 - `itslive_inversion_diagnostics.py`: per-pixel temporal constraint diagnostics.
 - `make_iceutils_inversion_template.py`: HDF5 temporal-template builder.
 - `plot_itslive_coverage.py`: standalone two-panel coverage plot.
+- `plot_itslive_inversion_diagnostics.py`: multi-panel diagnostic overview.
 - `compare_itslive_pair_duration.py`: mission and pair-duration comparison.
