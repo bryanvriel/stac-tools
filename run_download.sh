@@ -4,11 +4,11 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: ./run_download.sh [coverage|export|stack|all] [--dry-run]
+Usage: ./run_download.sh [coverage|download|stack|all] [--dry-run]
 
 Steps:
   coverage   Compute/resume coverage only.
-  export     Query official STAC and download matching velocity granules.
+  download   Query official STAC and download matching velocity granules.
   stack      Resample downloaded granules into one iceutils NetCDF Stack.
   all        Run coverage, download granules, then build the Stack (default).
 
@@ -18,28 +18,28 @@ Options:
 
 Examples:
   ./run_download.sh coverage
-  ./run_download.sh export
-  ./run_download.sh export --dry-run
+  ./run_download.sh download
+  ./run_download.sh download --dry-run
   ./run_download.sh stack
   ./run_download.sh all
 EOF
 }
 
 STEP=""
-EXPORT_DRY_RUN=false
+DOWNLOAD_DRY_RUN=false
 
 for argument in "$@"; do
     case "$argument" in
-        coverage|export|stack|all|both)
+        coverage|download|stack|all|both)
             if [[ -n "$STEP" ]]; then
-                echo "ERROR: specify only one step: coverage, export, stack, or all" >&2
+                echo "ERROR: specify only one step: coverage, download, stack, or all" >&2
                 exit 2
             fi
             STEP="$argument"
             [[ "$STEP" == "both" ]] && STEP="all"
             ;;
         --dry-run)
-            EXPORT_DRY_RUN=true
+            DOWNLOAD_DRY_RUN=true
             ;;
         -h|--help)
             usage
@@ -54,8 +54,8 @@ for argument in "$@"; do
 done
 
 STEP="${STEP:-all}"
-if [[ ("$STEP" == "coverage" || "$STEP" == "stack") && "$EXPORT_DRY_RUN" == true ]]; then
-    echo "ERROR: --dry-run applies only to the export step" >&2
+if [[ ("$STEP" == "coverage" || "$STEP" == "stack") && "$DOWNLOAD_DRY_RUN" == true ]]; then
+    echo "ERROR: --dry-run applies only to the download step" >&2
     exit 2
 fi
 
@@ -106,12 +106,12 @@ run_coverage() {
 }
 
 # -----------------------------
-# Velocity export
+# Velocity download
 # -----------------------------
 
-run_export() {
+run_download() {
     echo "Downloading velocity granules from the official ITS_LIVE STAC catalog"
-    export_args=(
+    download_args=(
         --bbox-lonlat "${BBOX[@]}"
         --start "$COVERAGE_START"
         --end "$COVERAGE_END"
@@ -121,10 +121,10 @@ run_export() {
         --workers "$DOWNLOAD_WORKERS"
         --download-retries "$DOWNLOAD_RETRIES"
     )
-    if [[ "$EXPORT_DRY_RUN" == false ]]; then
-        export_args+=(--download-data)
+    if [[ "$DOWNLOAD_DRY_RUN" == false ]]; then
+        download_args+=(--download-data)
     fi
-    python3 -u "$SCRIPT_DIR/itslive_stac_inventory.py" "${export_args[@]}"
+    python3 -u "$SCRIPT_DIR/itslive_stac_inventory.py" "${download_args[@]}"
 }
 
 run_stack() {
@@ -142,19 +142,19 @@ case "$STEP" in
     coverage)
         run_coverage
         ;;
-    export)
-        run_export
+    download)
+        run_download
         ;;
     stack)
         run_stack
         ;;
     all)
         run_coverage
-        run_export
-        if [[ "$EXPORT_DRY_RUN" == false ]]; then
+        run_download
+        if [[ "$DOWNLOAD_DRY_RUN" == false ]]; then
             run_stack
         else
-            echo "Skipping stack build because export is a dry run"
+            echo "Skipping stack build because download is a dry run"
         fi
         ;;
 esac

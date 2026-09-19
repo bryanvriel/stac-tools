@@ -98,8 +98,8 @@ For a robust download over an unreliable connection, query the official ITS_LIVE
 granule STAC catalog and download its current NetCDF assets:
 
 ```bash
-./run_download.sh export --dry-run
-./run_download.sh export
+./run_download.sh download --dry-run
+./run_download.sh download
 ```
 
 The dry run writes the filtered URL inventory without downloading data. The normal
