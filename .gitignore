@@ -2,8 +2,13 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.swp
+*.part
+*.zarr/
+*_granule_urls.txt
 
 denman*/
+month_denman_s1_velocity/
 *.tif
 *.nc
 *.png

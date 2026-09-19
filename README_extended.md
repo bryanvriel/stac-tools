@@ -146,6 +146,60 @@ The default output is `coverage_count_fraction.png` inside the results directory
 Use `--output`, `--title`, `--figsize`, and `--dpi` to customize it. `--cmap` or
 `--clim` applies one setting to both panels; panel-specific options take precedence.
 
+## Export selected velocity data
+
+`itslive_cube_export.py` downloads the actual filtered velocity arrays from the cloud
+cubes into a local Zarr v2 store. The safest route is to replay a completed coverage
+run, which uses its saved ROI and exact cube-specific observation indices:
+
+```bash
+python itslive_cube_export.py \
+  --coverage-results denman_s1_large_cached \
+  --outdir denman_s1_velocity \
+  --dry-run
+
+python itslive_cube_export.py \
+  --coverage-results denman_s1_large_cached \
+  --outdir denman_s1_velocity \
+  --workers 4
+```
+
+The dry run opens metadata, validates variables and observation identities, and prints
+an uncompressed size estimate without creating output. Exports larger than 50 GiB
+require `--allow-large`. If a remote read is interrupted, repeat the same command with
+`--resume`; changing the ROI, observations, variables, or block sizes requires a new
+output directory or `--overwrite`.
+
+A fresh selection uses the same filters as the coverage command:
+
+```bash
+python itslive_cube_export.py \
+  --bbox-lonlat 97.8127 -68.2938 101.97906 -65.427 \
+  --start 2019-01-01 --end 2021-12-31 \
+  --mission SENTINEL-1 --max-pair-days 12 --multi-cube \
+  --outdir denman_s1_velocity
+```
+
+By default the exporter writes `vx`, `vy`, `v`, `v_error`, `vx_error`, and `vy_error`.
+Repeat `--variables` to choose a different set, for example
+`--variables v --variables v_error --variables interp_mask`. Output is organized as
+`velocity.zarr/cubes/<cube-id>`, with each cube's native coordinates, CRS, observation
+metadata, source indices, and exact `roi_mask`. Pixels outside the ROI are missing.
+Open one group with:
+
+```python
+import xarray as xr
+
+ds = xr.open_zarr(
+    "denman_s1_velocity/velocity.zarr",
+    group="cubes/<cube-id>",
+)
+```
+
+Adjacent cube grids are intentionally not mosaicked or interpolated. The root
+`manifest.json`, `export_run_config.json`, and `export_selected_observations.csv` record
+provenance, selection, estimated size, completion state, and the export fingerprint.
+
 ## Assess temporal-inversion constraints
 
 `itslive_inversion_diagnostics.py` reads a completed multi-cube result and an HDF5

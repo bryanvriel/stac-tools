@@ -141,6 +141,8 @@ def transient_remote_error(exc: Exception) -> bool:
         "ClientConnectionError",
         "ClientConnectionResetError",
         "ClientOSError",
+        "ClientPayloadError",
+        "ContentLengthError",
         "CubeOpenError",
         "ServerDisconnectedError",
         "FSTimeoutError",

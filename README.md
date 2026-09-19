@@ -92,17 +92,66 @@ conda run -n stac python plot_itslive_inversion_diagnostics.py \
   denman_s1_large_cached
 ```
 
+## 5. Download velocity data
+
+For a robust download over an unreliable connection, query the official ITS_LIVE
+granule STAC catalog and download its current NetCDF assets:
+
+```bash
+./run_download.sh export --dry-run
+./run_download.sh export
+```
+
+The dry run writes the filtered URL inventory without downloading data. The normal
+run downloads the matching NetCDF granules under
+`month_denman_s1_velocity/stac_granules/data/`. Completed files are skipped and
+partial `.part` files resume with HTTP range requests, so rerunning the same command
+is safe. This step does not require a coverage or cache directory.
+
+The older native-grid cube-to-Zarr exporter remains available as
+`itslive_cube_export.py`, but it makes many small remote Zarr requests and is less
+suitable for a high-latency or unstable VPN connection.
+
+After the NetCDF granules have downloaded, resample them to the original Denman
+bbox and build a time-sorted iceutils Stack:
+
+```bash
+./run_download.sh stack
+```
+
+This writes `month_denman_s1_velocity/velocity_stack.nc`. Its scientific fields are
+`vx(time,y,x)`, `vy(time,y,x)`, and `v_error(time,y,x)` on a common 120 m EPSG:3031
+grid; `x`, `y`, and CF calendar `time` are coordinates. Pixels outside the exact
+original lon/lat bbox or outside a granule footprint are `NaN`. To select another
+resolution:
+
+```bash
+ITSLIVE_STACK_RESOLUTION=240 ./run_download.sh stack
+```
+
+The direct command, including alternative bbox, interpolation, and incomplete-input
+options, is available from `itslive_granules_to_stack.py --help` and must be run in
+the `ice` environment.
+
 ## Run the tests
 
 ```bash
 conda run -n stac python -m unittest -v \
   test_itslive_cube_coverage.py \
+  test_itslive_cube_export.py \
+  test_itslive_stac_inventory.py \
   test_itslive_inversion_diagnostics.py
+
+conda run --no-capture-output -n ice python -m unittest -v \
+  test_itslive_granules_to_stack.py
 ```
 
 ## Main programs
 
 - `itslive_cube_coverage.py`: single- or multi-cube coverage calculation.
+- `itslive_cube_export.py`: restartable native-grid velocity export to grouped Zarr.
+- `itslive_stac_inventory.py`: official-STAC inventory and resumable NetCDF downloader.
+- `itslive_granules_to_stack.py`: common-grid, iceutils-ready NetCDF Stack builder.
 - `itslive_inversion_diagnostics.py`: per-pixel temporal constraint diagnostics.
 - `make_iceutils_inversion_template.py`: HDF5 temporal-template builder.
 - `plot_itslive_coverage.py`: standalone two-panel coverage plot.
