@@ -214,6 +214,32 @@ def datetime64_to_tdec(value: np.datetime64) -> float:
     return float(ice.datestr2tdec(dateobj=date))
 
 
+def close_stack(stack: Any) -> None:
+    """Close new and legacy iceutils Stack implementations safely."""
+    close = getattr(stack, "close", None)
+    if callable(close):
+        close()
+        return
+
+    dataset = getattr(stack, "ds", None)
+    dataset_close = getattr(dataset, "close", None)
+    if callable(dataset_close):
+        dataset_close()
+
+    close_legacy = getattr(stack, "_close_legacy_source", None)
+    if callable(close_legacy):
+        close_legacy()
+
+    file_handle = getattr(stack, "fid", None)
+    file_close = getattr(file_handle, "close", None)
+    if callable(file_close):
+        file_close()
+        try:
+            stack.fid = None
+        except (AttributeError, TypeError):
+            pass
+
+
 def resample_granule(
     path: Path,
     target_hdr: Any,
@@ -329,7 +355,7 @@ def build_stack(args: argparse.Namespace) -> None:
                 f"{finite:,} finite ROI pixels"
             )
     finally:
-        stack.close()
+        close_stack(stack)
     os.replace(partial, output)
     print(f"Wrote iceutils-ready stack: {output}")
 

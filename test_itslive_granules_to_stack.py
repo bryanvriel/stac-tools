@@ -13,6 +13,26 @@ import itslive_granules_to_stack as converter
 
 
 class GranulesToStackTests(unittest.TestCase):
+    def test_closes_legacy_stack_handles(self):
+        class Handle:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        class LegacyStack:
+            def __init__(self):
+                self.ds = Handle()
+                self.fid = Handle()
+
+        stack = LegacyStack()
+        file_handle = stack.fid
+        converter.close_stack(stack)
+        self.assertTrue(stack.ds.closed)
+        self.assertTrue(file_handle.closed)
+        self.assertIsNone(stack.fid)
+
     def write_granule(self, path, x0, date, offset):
         x = x0 + np.arange(4) * 120.0
         y = 360.0 - np.arange(4) * 120.0

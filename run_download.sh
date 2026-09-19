@@ -129,12 +129,13 @@ run_download() {
 
 run_stack() {
     echo "Building common-grid iceutils velocity Stack"
-    conda run --no-capture-output -n ice python -u \
+    python \
         "$SCRIPT_DIR/itslive_granules_to_stack.py" \
         --input-dir "$OUTDIR/stac_granules" \
         --bbox-lonlat "${BBOX[@]}" \
         --resolution "$STACK_RESOLUTION" \
         --output "$OUTDIR/velocity_stack.nc" \
+        --allow-missing \
         --overwrite
 }
 
