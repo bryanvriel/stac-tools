@@ -19,6 +19,10 @@ from pyproj import CRS, Transformer
 
 
 VARIABLES = ("vx", "vy", "v_error")
+ORBIT_UNKNOWN = 0
+ORBIT_ASCENDING = 1
+ORBIT_DESCENDING = 2
+ORBIT_MIXED = 3
 
 
 def parse_args() -> argparse.Namespace:
@@ -144,6 +148,24 @@ def discover_inputs(input_dir: Path, allow_missing: bool) -> list[Path]:
     return paths
 
 
+def orbit_direction_code(direction_img1: Any, direction_img2: Any) -> int:
+    def normalize(value: Any) -> int:
+        text = str(value or "").strip().lower()
+        if text.startswith("asc"):
+            return ORBIT_ASCENDING
+        if text.startswith("desc"):
+            return ORBIT_DESCENDING
+        return ORBIT_UNKNOWN
+
+    first = normalize(direction_img1)
+    second = normalize(direction_img2)
+    if first == ORBIT_UNKNOWN or second == ORBIT_UNKNOWN:
+        return ORBIT_UNKNOWN
+    if first != second:
+        return ORBIT_MIXED
+    return first
+
+
 def source_info(path: Path, target_epsg: int) -> dict[str, Any]:
     with xr.open_dataset(path, engine="h5netcdf", decode_coords="all") as ds:
         missing = [name for name in ("x", "y", "time", *VARIABLES) if name not in ds]
@@ -166,9 +188,14 @@ def source_info(path: Path, target_epsg: int) -> dict[str, Any]:
                 f"EPSG:{target_epsg} would require vector rotation."
             )
         time_value = np.asarray(ds["time"].values).reshape(-1)[0].astype("datetime64[ns]")
+        pair_attrs = ds["img_pair_info"].attrs if "img_pair_info" in ds else {}
         return {
             "path": path,
             "time": time_value,
+            "orbit_direction": orbit_direction_code(
+                pair_attrs.get("flight_direction_img1"),
+                pair_attrs.get("flight_direction_img2"),
+            ),
             "x0": float(ds.x.values[0]),
             "y0": float(ds.y.values[0]),
             "dx": float(ds.x.values[1] - ds.x.values[0]),
@@ -336,6 +363,22 @@ def build_stack(args: argparse.Namespace) -> None:
                 shuffle=True,
             )
             variable.attrs["units"] = "meter/year"
+        orbit_direction = stack.create_dataset(
+            "orbit_direction",
+            (len(infos),),
+            dtype="i1",
+            data=np.asarray(
+                [info["orbit_direction"] for info in infos], dtype=np.int8
+            ),
+        )
+        orbit_direction.attrs["long_name"] = "image-pair orbit direction"
+        orbit_direction.attrs["flag_values"] = np.asarray(
+            [ORBIT_UNKNOWN, ORBIT_ASCENDING, ORBIT_DESCENDING, ORBIT_MIXED],
+            dtype=np.int8,
+        )
+        orbit_direction.attrs["flag_meanings"] = (
+            "unknown ascending descending mixed"
+        )
         stack.fid.attrs["source"] = "ITS_LIVE image-pair velocity granules"
         stack.fid.attrs["target_epsg"] = args.target_epsg
         stack.fid.attrs["resolution_m"] = args.resolution

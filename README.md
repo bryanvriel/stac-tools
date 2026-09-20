@@ -121,9 +121,10 @@ bbox and build a time-sorted iceutils Stack:
 
 This writes `month_denman_s1_velocity/velocity_stack.nc`. Its scientific fields are
 `vx(time,y,x)`, `vy(time,y,x)`, and `v_error(time,y,x)` on a common 120 m EPSG:3031
-grid; `x`, `y`, and CF calendar `time` are coordinates. Pixels outside the exact
-original lon/lat bbox or outside a granule footprint are `NaN`. To select another
-resolution:
+grid; `x`, `y`, and CF calendar `time` are coordinates. The per-observation
+`orbit_direction(time)` flag uses `0=unknown`, `1=ascending`, `2=descending`, and
+`3=mixed`. Pixels outside the exact original lon/lat bbox or outside a granule
+footprint are `NaN`. To select another resolution:
 
 ```bash
 ITSLIVE_STACK_RESOLUTION=240 ./run_download.sh stack

@@ -33,7 +33,7 @@ class GranulesToStackTests(unittest.TestCase):
         self.assertTrue(file_handle.closed)
         self.assertIsNone(stack.fid)
 
-    def write_granule(self, path, x0, date, offset):
+    def write_granule(self, path, x0, date, offset, direction):
         x = x0 + np.arange(4) * 120.0
         y = 360.0 - np.arange(4) * 120.0
         values = np.arange(16, dtype=np.float32).reshape(1, 4, 4) + offset
@@ -43,6 +43,14 @@ class GranulesToStackTests(unittest.TestCase):
                 "vy": (("time", "y", "x"), values + 10),
                 "v_error": (("time", "y", "x"), values + 1),
                 "mapping": ((), np.float32(0), {"spatial_epsg": 3031}),
+                "img_pair_info": (
+                    ("time",),
+                    np.asarray([0], dtype=np.float32),
+                    {
+                        "flight_direction_img1": direction,
+                        "flight_direction_img2": direction,
+                    },
+                ),
             },
             coords={
                 "time": np.asarray([date], dtype="datetime64[ns]"),
@@ -59,8 +67,12 @@ class GranulesToStackTests(unittest.TestCase):
             root = Path(temporary)
             data = root / "data"
             data.mkdir()
-            self.write_granule(data / "later.nc", 60.0, "2020-01-02", 100)
-            self.write_granule(data / "earlier.nc", 0.0, "2020-01-01", 0)
+            self.write_granule(
+                data / "later.nc", 60.0, "2020-01-02", 100, "descending"
+            )
+            self.write_granule(
+                data / "earlier.nc", 0.0, "2020-01-01", 0, "ascending"
+            )
             with (root / "items.csv").open("w", newline="") as stream:
                 writer = csv.DictWriter(stream, fieldnames=["data_href"])
                 writer.writeheader()
@@ -98,11 +110,37 @@ class GranulesToStackTests(unittest.TestCase):
                 self.assertTrue(
                     {"vx", "vy", "v_error"}.issubset(stack.ds.data_vars)
                 )
+                np.testing.assert_array_equal(
+                    stack["orbit_direction"].values,
+                    [converter.ORBIT_ASCENDING, converter.ORBIT_DESCENDING],
+                )
+                self.assertEqual(
+                    stack["orbit_direction"].attrs["flag_meanings"],
+                    "unknown ascending descending mixed",
+                )
                 self.assertLess(stack.ds.time.values[0], stack.ds.time.values[1])
                 self.assertEqual(np.isfinite(stack["vx"].values).sum(), 28)
                 self.assertTrue(np.isnan(stack["vx"].values[:, :, -1]).any())
             finally:
                 stack.close()
+
+    def test_orbit_direction_codes(self):
+        self.assertEqual(
+            converter.orbit_direction_code("ascending", "ASCENDING"),
+            converter.ORBIT_ASCENDING,
+        )
+        self.assertEqual(
+            converter.orbit_direction_code("descending", "descending"),
+            converter.ORBIT_DESCENDING,
+        )
+        self.assertEqual(
+            converter.orbit_direction_code("ascending", "descending"),
+            converter.ORBIT_MIXED,
+        )
+        self.assertEqual(
+            converter.orbit_direction_code("ascending", None),
+            converter.ORBIT_UNKNOWN,
+        )
 
 
 if __name__ == "__main__":
